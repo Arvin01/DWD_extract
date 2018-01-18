@@ -52,7 +52,7 @@ coord1 <- SpatialPointsDataFrame(coords = coord[,4:3], data = coord,
 # to easily work with the contents of the grids folder, it is useful to be able
 # to work with the list.files() function (which lists the contents of a folder)
 
-# get directory of a grid with precipitation data using list.files()
+# get path to a grid with precipitation data using list.files()
 # (full.names = TRUE assures that the entire path is returned):
 first <- list.files("grids/precipitation/jan", full.names = TRUE)[1]
 first # this is the path to the grid with precipitation data for january
@@ -70,9 +70,10 @@ proj
 
 # the file can be loaded again using the correct CRS information
 r2 <- raster(first, crs = proj)
-r2
+r2 # now the correct coordinate reference system is displayed
 
-# the raster file can be plotted to inspect if it was loaded correctly
+# it is possible to plot the raster information, e.g. to inspect if it was
+# loaded correctly
 plot(r2)
 
 # in order to extract information for the site coordinates, they have to
@@ -93,20 +94,20 @@ jan
 # the layers in the stacks take their names from the .asc objects
 # in the corresponding folder
 
-# for stacks of files, for some reason the coordinate reference has to be
+# for raster stacks, for some reason the coordinate reference has to be
 # set manually after loading 
 projection(jan) <- proj
 jan # now the coord. ref. is correct
 
-# raster stacks can be easily plotted (don't do this when they have lots of layers!)
-plot(jan)
+# raster stacks can be easily plotted 
+plot(jan) # Don't do this when they have lots of layers!
 
 # data for specific coordinates can be extracted from a raster of raster stack 
 # with the extract function
-extr <- extract(jan, coord2)
+extr <- raster::extract(jan, coord2) %>% as.tibble  # the output is converted to tibble
 
 # ...and then be combined with plot information
-data <- data.frame(coord, extr)
+data <- bind_cols(coord, extr)
 data
 
 ###############################################################################
