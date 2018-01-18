@@ -13,7 +13,7 @@ As this is a common task within [our department](http://plantecology.uni-goettin
 Getting the DWD raw data
 ------------------------
 
-As it would be rather time-consuming to remotely access the DWD datasets from within an R script, the easiest solution is to batch download them all from the FTP server (there are Browser extentions that make this task very easy, such as ASK SEBASTIAN). *It is also planned to store the datasets in the exchange folder of our department*.
+As it would be rather time-consuming to remotely access the DWD datasets from within an R script, the easiest solution is to batch download them all from the FTP server (there are Browser extentions that make this task very easy, such as [DownThemAll](https://addons.mozilla.org/de/firefox/addon/downthemall/)). *It is also planned to store the datasets in the exchange folder of our department*.
 
 After downloading the files, batch unpack the \*.asc.gz files and delete the original compressed files. In the present example, we worked with monthly averages of precipitation. We decided to keep the folder structure of the original dataset (grids for all years separated into folders by months), but it would also be possible (and even easier to handle) to store all grids in the same folder.
 
