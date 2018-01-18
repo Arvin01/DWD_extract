@@ -14,12 +14,25 @@
 
 ## load packages
 # create list of packages
-pkgs <-c("tidyverse", "magrittr", "lubridate", "rgdal", "raster")  
+pkgs <-c("tidyverse", "magrittr", "rgdal", "raster", "gdalUtils")  
 # tidyverse - consistent framework for data handling and management
 # magrittr  - piping operators (%>%, %<>%, %$% and so on)
-# lubridate - simple handling of dates and times
 # rgdal     - driver for geodata handling
 # raster    - package for raster file handling
+# gdalUtils - used to read CRS strings from .prj files
+
+# WARNING: for rgdal (and hence raster) to work properly, it might be 
+# necessary to install the newest version of gdal manually 
+# (http://www.gdal.org/wiki/DownloadingGdalBinaries).
+
+# Windows: on Sebastian's computer, we tried installing GISInternals 
+# (http://www.gisinternals.com/) and it worked without problems
+
+# Linux: there are different binaries available (see website). However,
+# the version in the Ubuntu repositories (packages gdal-bin and libgdal-dev)
+# caused problems with my version of rgdal becausethey contained an
+# outdated version of rgdal, so I had to add the ubuntugis PPA to get 
+# the newest (unstable) version of rgdal.
 
 # check for existence of packages and install if necessary
 to_install<-pkgs[!(pkgs %in% installed.packages()[,1])]
@@ -29,88 +42,113 @@ if (length(to_install)>0)  for (i in seq(to_install)) install.packages(to_instal
 for (i in pkgs) require(i, character.only = T)
 
 ###############################################################################
-######## get coordinates 
+######## Get plot coordinates 
 ###############################################################################
+# data are loaded with readr::read_csv() instead of utils::read.csv() to access
+# coordinates as tibbles, which print more beatifully
 coord <- read_csv("data/csv/Coordinates.csv")
+coord
 
+# convert to a SpatialPointsDataFrame 
 coord1 <- SpatialPointsDataFrame(coords = coord[,4:3], data = coord, 
-                                 proj4string = CRS(" +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
-
-
+                                 proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+# notice coords = coord[,4:3] - order had to be reversed because longitude has 
+# to come first
 
 ###############################################################################
-######## Load and extract dwd data - first checks
+######## Loading and handling raster files
 ###############################################################################
 
-## check if it is possible to load asc.gz files
-# get directory of a random precipitation grid
+# to easily work with the contents of the grids folder, it is useful to be able
+# to work with the list.files() function (which lists the contents of a folder)
+
+# get directory of a grid with precipitation data using list.files()
+# (full.names = TRUE assures that the entire path is returned):
 first <- list.files("grids/precipitation/jan", full.names = TRUE)[1]
-first
+first # this is the path to the grid with precipitation data for january
+      # for the first year in the interval spanned by the DWD data
 
-# try to load with raster
+# it is easy to load the corresponding .asc file with raster()
 r1 <- raster(first)
-r1
+r1 
+# unfortunately, the file has the wrong projection (coord. ref. : NA)
 
-# works, but has wrong projection
-# get (random) file with correct projection
-r2 <- raster("grids/projection.asc")
+# the correct coordinate reference system is stored in grids/projection.prj
+# and can be converted to a CRS object with gdalUtils::gdalsrsinfo
+proj <- gdalsrsinfo("grids/projection.prj", as.CRS = TRUE)
+proj
+
+# the file can be loaded again using the correct CRS information
+r2 <- raster(first, crs = proj)
 r2
 
-# get correct projection
-proj <- projection(r2)
-
-# test if projections are correct
+# the raster file can be plotted to inspect if it was loaded correctly
 plot(r2)
-points(coord2)
 
-# transform site coordinates to the projection system of the gridded dataset
+# in order to extract information for the site coordinates, they have to
+# be transformed to the same coordinate system 
 coord2 <- spTransform(coord1, CRS = proj)
 
-# try to re-load r1 with correct projection
-r1 <- raster(first, crs = proj)
-r1
-# works --> that's how it has to be done in the loop
+# it is easy to stack a large list of rasters instead of just loading a 
+# single raster dataset at a time
 
-# list all files for january
+# first, list all files in one folder (in this example, precipitation for 
+# january)
 files <- list.files("grids/precipitation/jan", full.names = TRUE)
+head(files)
 
-# load all files for january
+# load all rasters for january as a stack
 jan <- stack(files)
-# set coordinate reference
-projection(jan) <- proj
-jan # works
+jan 
+# the layers in the stacks take their names from the .asc objects
+# in the corresponding folder
 
-# check if extraction works
-system.time(data <- data.frame(coord, month = "jan", extract(jan, coord2)))
-data %>% as.tibble
+# for stacks of files, for some reason the coordinate reference has to be
+# set manually after loading 
+projection(jan) <- proj
+jan # now the coord. ref. is correct
+
+# raster stacks can be easily plotted (don't do this when they have lots of layers!)
+plot(jan)
+
+# data for specific coordinates can be extracted from a raster of raster stack 
+# with the extract function
+extr <- extract(jan, coord2)
+
+# ...and then be combined with plot information
+data <- data.frame(coord, extr)
+data
 
 ###############################################################################
-######## Load and extract dwd data 
+######## Batch load and extract dwd data for all months with a loop
 ###############################################################################
 # get names of months and path to months
-months     <- list.files("grids/precipitation")
-monthpaths <- list.files("grids/precipitation", full.names = TRUE)
+(months     <- list.files("grids/precipitation"))
+(monthpaths <- list.files("grids/precipitation", full.names = TRUE))
 
 # create empty list for extracted data
 out <- list()
+
 # loop over all months
-system.time({
-  for (i in 1:12) {
-    # print name of month (to see if loop does get stuck) 
-    cat(months[i], "\n")
-    # get list of all files for the corresponding month
-    files <- list.files(monthpaths[i], full.names = TRUE)
-    # stack all rasters in corresponding folder
-    temp <- stack(files)
-    # set coordinate reference
-    projection(temp) <- proj
-    # extract data for the plot coordinates from the 
-    out[[i]] <- data.frame(coord, month = months[i], extract(temp, coord2))
-  }
-}) # 497.54 seconds
+for (i in 1:12) {
+  # print name of month (to see when loop get stuck) 
+  cat(months[i], "\n")
+  # get list of all files for the corresponding month
+  files <- list.files(monthpaths[i], full.names = TRUE)
+  # stack all rasters in corresponding folder
+  temp <- stack(files)
+  # set coordinate reference
+  projection(temp) <- proj
+  # extract data for the plot coordinates from the 
+  out[[i]] <- data.frame(coord, month = months[i], extract(temp, coord2))
+}
+# be careful when working with the ful dataset! for Sebastian's data,
+# it took 497.54 seconds
 
 # reshape output to longtable and bind rows
-final_output <- map(out, function(x) gather(x, key = "temp", value = "precipitation", contains("RSMS")))%>%
+final_output <- map(out, function(x) gather(x, key = "temp", 
+                                            value = "precipitation", 
+                                            contains("RSMS")))%>%
   bind_rows %>% # ignore warning about attributes
   as.tibble %>% # convert to tibble
   separate(temp, into = c("temp1", "monthnum", "year", "temp2")) %>% # separate temporary column
@@ -122,4 +160,6 @@ final_output
 ###############################################################################
 ######## Export tidy version of dataset
 ###############################################################################
-write.csv(final_output, file = paste0("output/tidy_precipitation_data_", today(), ".csv"), row.names = FALSE)
+write.csv(final_output, 
+          file = paste0("output/tidy_precipitation_data_", today(), ".csv"),
+          row.names = FALSE)
