@@ -14,25 +14,15 @@
 
 ## load packages
 # create list of packages
-pkgs <-c("tidyverse", "magrittr", "rgdal", "raster", "gdalUtils")  
+pkgs <-c("tidyverse", "rgdal", "raster", "gdalUtils")  
 # tidyverse - consistent framework for data handling and management
-# magrittr  - piping operators (%>%, %<>%, %$% and so on)
 # rgdal     - driver for geodata handling
 # raster    - package for raster file handling
 # gdalUtils - used to read CRS strings from .prj files
 
-# WARNING: for rgdal (and hence raster) to work properly, it might be 
-# necessary to install the newest version of gdal manually 
-# (http://www.gdal.org/wiki/DownloadingGdalBinaries).
-
-# Windows: on Sebastian's computer, we tried installing GISInternals 
-# (http://www.gisinternals.com/) and it worked without problems
-
-# Linux: there are different binaries available (see website). However,
-# the version in the Ubuntu repositories (packages gdal-bin and libgdal-dev)
-# caused problems with my version of rgdal becausethey contained an
-# outdated version of rgdal, so I had to add the ubuntugis PPA to get 
-# the newest (unstable) version of rgdal.
+# WARNING: for rgdal (and hence raster) to work properly, the GDAL and PROJ.4
+# libraries have to be installed (check the README file of the project for 
+# instructions).
 
 # check for existence of packages and install if necessary
 to_install<-pkgs[!(pkgs %in% installed.packages()[,1])]
@@ -42,7 +32,7 @@ if (length(to_install)>0)  for (i in seq(to_install)) install.packages(to_instal
 for (i in pkgs) require(i, character.only = T)
 
 ###############################################################################
-######## Get plot coordinates 
+######## Load plot coordinates 
 ###############################################################################
 # data are loaded with readr::read_csv() instead of utils::read.csv() to access
 # coordinates as tibbles, which print more beatifully
@@ -52,7 +42,7 @@ coord
 # convert to a SpatialPointsDataFrame 
 coord1 <- SpatialPointsDataFrame(coords = coord[,4:3], data = coord, 
                                  proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
-# notice coords = coord[,4:3] - order had to be reversed because longitude has 
+# note coords = coord[,4:3] - order had to be reversed because longitude has 
 # to come first
 
 ###############################################################################
