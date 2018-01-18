@@ -119,4 +119,162 @@ coord1 <- SpatialPointsDataFrame(coords = coord[,4:3], data = coord,
                                  proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
 ```
 
-The `proj4string` is a coordinate reference system as provided by the PROJ.4 library (in this case, latitude/longitude as decimal degrees). Note that I specified `coords = coord[,4:3]`: the order of the coordinates had to be reversed because longitude has to come first.
+The `proj4string` is a coordinate reference system as provided by the PROJ.4 library (in this case, latitude/longitude as decimal degrees). Note that I specified `coords = coord[,4:3]` - the order of the coordinates had to be reversed because longitude has to come first.
+
+### Loading and handling raster files
+
+To easily work with the contents of the grids folder, it is useful to be able to work with the `list.files()` function (which lists the contents of a folder).
+
+We can use `list.files()` to get the path to the grid with the precipitation data for the first month of the first year in the interval spanned by the DWD data:
+
+``` r
+first <- list.files("grids/precipitation/jan", full.names = TRUE)[1]
+first 
+```
+
+    ## [1] "grids/precipitation/jan/RSMS_01_1881_01.asc"
+
+`full.names = TRUE` assures that the entire path is returned.
+
+Individual raster datasets can be loaded with the `raster()` function. It is easy to load the .asc file corresponding to this path with `raster()`:
+
+``` r
+r1 <- raster(first)
+r1 
+```
+
+    ## class       : RasterLayer 
+    ## dimensions  : 866, 654, 566364  (nrow, ncol, ncell)
+    ## resolution  : 1000, 1000  (x, y)
+    ## extent      : 3280415, 3934415, 5237501, 6103501  (xmin, xmax, ymin, ymax)
+    ## coord. ref. : NA 
+    ## data source : /media/WinData/Projects/2018/2018-01 Sebastian Fuchs dwd/DWD_extract/grids/precipitation/jan/RSMS_01_1881_01.asc 
+    ## names       : RSMS_01_1881_01 
+    ## values      : -2147483648, 2147483647  (min, max)
+
+Unfortunately, the file is missing the projection information (`coord. ref. : NA`).
+
+The correct coordinate reference system is stored in `grids/projection.prj` and can be converted to a CRS object using `gdalUtils::gdalsrsinfo()`:
+
+``` r
+proj <- gdalsrsinfo("grids/projection.prj", as.CRS = TRUE)
+proj
+```
+
+    ## CRS arguments:
+    ##  +proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0
+    ## +datum=potsdam +units=m +no_defs +ellps=bessel
+    ## +towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7
+
+The file can be loaded again using the correct CRS information:
+
+``` r
+r2 <- raster(first, crs = proj)
+r2 # now the coordinate reference system is displayed
+```
+
+    ## class       : RasterLayer 
+    ## dimensions  : 866, 654, 566364  (nrow, ncol, ncell)
+    ## resolution  : 1000, 1000  (x, y)
+    ## extent      : 3280415, 3934415, 5237501, 6103501  (xmin, xmax, ymin, ymax)
+    ## coord. ref. : +proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +datum=potsdam +units=m +no_defs +ellps=bessel +towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7 
+    ## data source : /media/WinData/Projects/2018/2018-01 Sebastian Fuchs dwd/DWD_extract/grids/precipitation/jan/RSMS_01_1881_01.asc 
+    ## names       : RSMS_01_1881_01 
+    ## values      : -2147483648, 2147483647  (min, max)
+
+It is possible to plot the raster information, e.g. to inspect if it was loaded correctly.
+
+``` r
+plot(r2)
+```
+
+![](README_files/figure-markdown_github/raster5-1.png)
+
+The plot coordinates are in a different coordinate reference system (longitude - latitude). In order to extract information for the site coordinates, they have to be transformed to the same coordinate system, which can be achieved with `spTransform()`
+
+``` r
+coord2 <- spTransform(coord1, CRS = proj)
+```
+
+In the original dataset, there are hundreds of rasters with climate information for each month. Fortunately, it is not necessary to access them all separately a single raster dataset at a time because it is easy to stack a large list of rasters all at once. Actually it is not even necessary to use a loop to achieve this...
+
+First, list all files in one folder (in this example, precipitation for January):
+
+``` r
+files <- list.files("grids/precipitation/jan", full.names = TRUE)
+files
+```
+
+    ## [1] "grids/precipitation/jan/RSMS_01_1881_01.asc"
+    ## [2] "grids/precipitation/jan/RSMS_01_1882_01.asc"
+    ## [3] "grids/precipitation/jan/RSMS_01_1883_01.asc"
+
+Now all rasters for January can be loaded as a raster stack:
+
+``` r
+jan <- stack(files)
+jan
+```
+
+    ## class       : RasterStack 
+    ## dimensions  : 866, 654, 566364, 3  (nrow, ncol, ncell, nlayers)
+    ## resolution  : 1000, 1000  (x, y)
+    ## extent      : 3280415, 3934415, 5237501, 6103501  (xmin, xmax, ymin, ymax)
+    ## coord. ref. : NA 
+    ## names       : RSMS_01_1881_01, RSMS_01_1882_01, RSMS_01_1883_01 
+    ## min values  :     -2147483648,     -2147483648,     -2147483648 
+    ## max values  :      2147483647,      2147483647,      2147483647
+
+This is only possible if coordinate system, extent and resolution of all rasters in the folder are equal. The layers in the stack take their names from the .asc objects in the corresponding folder. In the case of this tutorial, there are only 3 layers because of data storage constraints on GitHub, but if you are working with the original DWD dataset there may be several hundreds.
+
+For raster stacks, for some reason the coordinate reference has to be set manually after loading:
+
+``` r
+projection(jan) <- proj
+jan # now the coord. ref. is correct
+```
+
+    ## class       : RasterStack 
+    ## dimensions  : 866, 654, 566364, 3  (nrow, ncol, ncell, nlayers)
+    ## resolution  : 1000, 1000  (x, y)
+    ## extent      : 3280415, 3934415, 5237501, 6103501  (xmin, xmax, ymin, ymax)
+    ## coord. ref. : +proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +datum=potsdam +units=m +no_defs +ellps=bessel +towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7 
+    ## names       : RSMS_01_1881_01, RSMS_01_1882_01, RSMS_01_1883_01 
+    ## min values  :     -2147483648,     -2147483648,     -2147483648 
+    ## max values  :      2147483647,      2147483647,      2147483647
+
+Raster stacks can be easily plotted:
+
+``` r
+plot(jan) # Don't do this when they have lots of layers!
+```
+
+![](README_files/figure-markdown_github/raster10-1.png)
+
+The `extract()` function can be used to extract data for specific coordinates from a raster of raster stack. The package `raster` is called explicitly in this case because there's a function called `extract` in the `tidyverse` that may cause confusion.
+
+``` r
+extr <- raster::extract(jan, coord2) %>% as.tibble # the output is converted to tibble
+```
+
+The output can then be combined with the plot level information in the our tibble called `coord`:
+
+``` r
+data <- bind_cols(coord, extr)
+data
+```
+
+    ## # A tibble: 34 x 7
+    ##     site species latitude longitude RSMS_01_1881_01 RSMS_01_1882_01
+    ##    <chr>   <chr>    <dbl>     <dbl>           <dbl>           <dbl>
+    ##  1    RH      WL 51.59920  10.00921              35              27
+    ##  2    RH      ES 51.59129  10.00793              45              35
+    ##  3    RH      SA 51.59129  10.00793              45              35
+    ##  4    HR      TE 51.59420  10.07873              39              29
+    ##  5    HR      HB 51.59420  10.07873              39              29
+    ##  6    KB      SA 51.54180   9.80909              36              29
+    ##  7    KB      ES 51.54180   9.80909              36              29
+    ##  8    KB      HB 51.54180   9.80909              36              29
+    ##  9    LB      TE 51.97858  10.43567              42              38
+    ## 10    LB      SA 51.97938  10.43071              44              39
+    ## # ... with 24 more rows, and 1 more variables: RSMS_01_1883_01 <dbl>

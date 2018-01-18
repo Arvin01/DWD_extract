@@ -93,93 +93,90 @@ The `proj4string` is a coordinate reference system as provided by the PROJ.4 lib
 
 
 ### Loading and handling raster files
-to easily work with the contents of the grids folder, it is useful to be able
-to work with the list.files() function (which lists the contents of a folder)
+To easily work with the contents of the grids folder, it is useful to be able
+to work with the `list.files()` function (which lists the contents of a folder).
 
-get directory of a grid with precipitation data using list.files()
-
+We can use `list.files()` to get the path to the grid with the precipitation data for the first month of the first year in the interval spanned by the DWD data:
 ```{r raster1, cache = TRUE}
 first <- list.files("grids/precipitation/jan", full.names = TRUE)[1]
+first 
 ```
-full.names = TRUE assures that the entire path is returned):
-first this is the path to the grid with precipitation data for january
-      for the first year in the interval spanned by the DWD data
+`full.names = TRUE` assures that the entire path is returned.
 
-it is easy to load the corresponding .asc file with raster()
+Individual raster datasets can be loaded with the `raster()` function. It is easy to load the .asc file corresponding to this path with `raster()`:
 
-```{r raster1, cache = TRUE}
+```{r raster2, cache = TRUE}
 r1 <- raster(first)
 r1 
 ```
-unfortunately, the file has the wrong projection (coord. ref. : NA)
 
-the correct coordinate reference system is stored in grids/projection.prj
-and can be converted to a CRS object with gdalUtils::gdalsrsinfo
+Unfortunately, the file is missing the projection information (`coord. ref. : NA`).
 
-```{r raster1, cache = TRUE}
+The correct coordinate reference system is stored in `grids/projection.prj`
+and can be converted to a CRS object using `gdalUtils::gdalsrsinfo()`:
+
+```{r raster3, cache = TRUE}
 proj <- gdalsrsinfo("grids/projection.prj", as.CRS = TRUE)
 proj
 ```
-the file can be loaded again using the correct CRS information
 
-```{r raster1, cache = TRUE}
+The file can be loaded again using the correct CRS information:
+```{r raster4, cache = TRUE}
 r2 <- raster(first, crs = proj)
-r2
+r2 # now the coordinate reference system is displayed
 ```
-the raster file can be plotted to inspect if it was loaded correctly
 
-```{r raster1, cache = TRUE}
+It is possible to plot the raster information, e.g. to inspect if it was loaded correctly.
+```{r raster5, cache = TRUE}
 plot(r2)
 ```
-in order to extract information for the site coordinates, they have to
-be transformed to the same coordinate system 
 
-```{r raster1, cache = TRUE}
+The plot coordinates are in a different coordinate reference system (longitude - latitude). In order to extract information for the site coordinates, they have to be transformed to the same coordinate system, which can be achieved with `spTransform()`
+
+```{r raster6, cache = TRUE}
 coord2 <- spTransform(coord1, CRS = proj)
 ```
-it is easy to stack a large list of rasters instead of just loading a 
-single raster dataset at a time
 
-first, list all files in one folder (in this example, precipitation for 
-january)
+In the original dataset, there are hundreds of rasters with climate information for each month. Fortunately, it is not necessary to access them all separately a single raster dataset at a time because it is easy to stack a large list of rasters all at once. Actually it is not even necessary to use a loop to achieve this...
 
-```{r raster1, cache = TRUE}
+First, list all files in one folder (in this example, precipitation for 
+January):
+```{r raster7, cache = TRUE}
 files <- list.files("grids/precipitation/jan", full.names = TRUE)
-head(files)
+files
 ```
-load all rasters for january as a stack
 
-```{r raster1, cache = TRUE}
+Now all rasters for January can be loaded as a raster stack:
+```{r raster8, cache = TRUE}
 jan <- stack(files)
 jan
 ```
 
-the layers in the stacks take their names from the .asc objects
-in the corresponding folder
+This is only possible if coordinate system, extent and resolution of all rasters in the folder are equal. The layers in the stack take their names from the .asc objects
+in the corresponding folder. In the case of this tutorial, there are only 3 layers because of data storage constraints on GitHub, but if you are working with the original DWD dataset there may be several hundreds.
 
-for stacks of files, for some reason the coordinate reference has to be
-set manually after loading 
-
-```{r raster1, cache = TRUE}
+For raster stacks, for some reason the coordinate reference has to be
+set manually after loading:
+```{r raster9, cache = TRUE}
 projection(jan) <- proj
-jan 
+jan # now the coord. ref. is correct
 ```
-now the coord. ref. is correct
 
-raster stacks can be easily plotted (don't do this when they have lots of layers!)
 
-```{r raster1, cache = TRUE}
-plot(jan)
+Raster stacks can be easily plotted: 
+
+```{r raster10, cache = TRUE}
+plot(jan) # Don't do this when they have lots of layers!
 ```
-data for specific coordinates can be extracted from a raster of raster stack 
-with the extract function
 
-```{r raster1, cache = TRUE}
-extr <- extract(jan, coord2)
+The `extract()` function can be used to extract data for specific coordinates from a raster of raster stack. The package `raster` is called explicitly in this case because there's a function called `extract` in the `tidyverse` that may cause confusion.
+```{r raster11, cache = TRUE}
+extr <- raster::extract(jan, coord2) %>% as.tibble # the output is converted to tibble
 ```
-...and then be combined with plot information
 
-```{r raster1, cache = TRUE}
-data <- data.frame(coord, extr)
+The output can then be combined with the plot level information in the our tibble called `coord`:
+
+```{r raster12, cache = TRUE}
+data <- bind_cols(coord, extr)
 data
 ```
