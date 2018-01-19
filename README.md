@@ -65,7 +65,7 @@ First, the packages needed for the analysis have to be loaded. Here's a nice bit
 
 ``` r
 # create list of packages
-pkgs <-c("tidyverse", "rgdal", "raster", "gdalUtils")  
+pkgs <-c("tidyverse", "lubridate", "rgdal", "raster", "gdalUtils")  
 # check for existence of packages and install if necessary
 to_install<-pkgs[!(pkgs %in% installed.packages()[,1])]
 if (length(to_install)>0)  for (i in seq(to_install)) install.packages(to_install[i])
@@ -73,7 +73,16 @@ if (length(to_install)>0)  for (i in seq(to_install)) install.packages(to_instal
 for (i in pkgs) require(i, character.only = T)
 ```
 
-The package `tidyverse` is a wrapper around a list of a large amount of very useful packages (e.g. `dplyr`, `purrr`, `ggplot2` and `readr`) that together form a consistent framework for data handling and management. `rgdal` allows R to access the functionalities of the GDAL library, `raster` is a package for efficient raster file handling and `gdalUtils` is used to read CRS strings from .prj files.
+    ## Loading required package: lubridate
+
+    ## 
+    ## Attaching package: 'lubridate'
+
+    ## The following object is masked from 'package:base':
+    ## 
+    ##     date
+
+The package `tidyverse` is a wrapper around a list of a large amount of very useful packages (e.g. `dplyr`, `purrr`, `ggplot2` and `readr`) that together form a consistent framework for data handling and management. `lubridate` is for working with times and dates, and in this script is only used to get a correct timestamp on the output files. `rgdal` allows R to access the functionalities of the GDAL library, `raster` is a package for efficient raster file handling and `gdalUtils` is used to read CRS strings from .prj files.
 
 ### Load plot coordinates
 
@@ -278,3 +287,118 @@ data
     ##  9    LB      TE 51.97858  10.43567              42              38
     ## 10    LB      SA 51.97938  10.43071              44              39
     ## # ... with 24 more rows, and 1 more variables: RSMS_01_1883_01 <dbl>
+
+### Batch load and extract DWD data for all months
+
+It is possible to extend the method described in the previous section to batch load and extract data from stacks of rasters stored in different folders. Before we do this, let's first have a look at the names of all folders in the precipitation folder:
+
+``` r
+(months     <- list.files("grids/precipitation"))
+```
+
+    ##  [1] "apr" "aug" "dec" "feb" "jan" "jul" "jun" "mar" "may" "nov" "oct"
+    ## [12] "sep"
+
+As you can see, the subfolders are just the names of the months. We might be better off by storing the complete path to these folders:
+
+``` r
+(monthpaths <- list.files("grids/precipitation", full.names = TRUE))
+```
+
+    ##  [1] "grids/precipitation/apr" "grids/precipitation/aug"
+    ##  [3] "grids/precipitation/dec" "grids/precipitation/feb"
+    ##  [5] "grids/precipitation/jan" "grids/precipitation/jul"
+    ##  [7] "grids/precipitation/jun" "grids/precipitation/mar"
+    ##  [9] "grids/precipitation/may" "grids/precipitation/nov"
+    ## [11] "grids/precipitation/oct" "grids/precipitation/sep"
+
+We can now loop over all these folders and load and stack all containing rasters easily with a loop. For loops have a bad reputation in R, but they do not necessarily have to be slow. The key to efficient loops in R is pre-allocation. In this example, we make sure our loop runs fast by creating an empty list for the extracted data instead of jamming our memory with an object that grows during each iteration:
+
+``` r
+out <- vector(mode = "list", length = length(months))
+```
+
+The loop itself could look somewhat like this:
+
+``` r
+# loop over all months
+for (i in 1:12) {
+  # print name of month (to see if loop gets stuck) 
+  cat(months[i], "\n")
+  # get list of all files for the corresponding month
+  files <- list.files(monthpaths[i], full.names = TRUE)
+  # stack all rasters in corresponding folder
+  temp <- stack(files)
+  # set coordinate reference
+  projection(temp) <- proj
+  # extract data for the plot coordinates and store them together with
+  # the original plot level dataset, an indicator of month and the
+  # extracted precipitation data
+   out[[i]] <- data.frame(coord,                  # plot level data
+                         month = months[i],       # indicator for month
+                         extract(temp, coord2),   # extracted information
+                         stringsAsFactors = FALSE # make sure month is evaluated
+                         )                        # as character to avoid warnings
+  }                                               # in later steps
+```
+
+    ## apr 
+    ## aug 
+    ## dec 
+    ## feb 
+    ## jan 
+    ## jul 
+    ## jun 
+    ## mar 
+    ## may 
+    ## nov 
+    ## oct 
+    ## sep
+
+In the example on GitHub, there are only three rasters in each folder to keep the amount of data manageable. Be careful when working with the full dataset, because this step might take a lot of time. For Sebastian's dataset, it took 8 min 17.5 sec to extract monthly data for all years covered by DWD data.
+
+Now we have extracted all of the plot information, but there remains one problem: The output is a list of data.frames, and each data.frame is in a wide table format with weird column titles such as `"RSMS_09_1881_01"`. Fortunately, the data can be converted to a [tidy](https://cran.r-project.org/web/packages/tidyr/vignettes/tidy-data.html) format using a pipeline based on a string of functions from packages from the `tidyverse`. To achieve this, we first use `purrr::map()` to apply the function `gather()` from the `tidyr` package individually on each data.frame in the list with our results to reshape them to a long table format, i.e., instead of having several columns with precipitation data (each with cryptic names), we create one (temporary) column for the names and one column for the precipitation data. Then, we bind the rows of all data.frames in the list using `dplyr::bind_rows()`, split the column with the names of the raster files into four columns with `tidyr::separate()` and use `dplyr::select()` to remove the two temporary columns with un-important gibberish. Now, we just have to reorder the output by site, species, (numeric) month and year to end up with a meaningful output.
+
+``` r
+final_output <- map(out, 
+                    function(x) gather(x,
+                                       key = "temp",           # name for the column with the column titles
+                                       value = "precipitation",# name for the column with the content of the original columns
+                                       contains("RSMS")))%>%   # selection criterion (only combine columns that contain the character string "RSMS")
+  bind_rows %>% # bind rows of individual data.frames
+  separate(temp, into = c("temp1", "monthnum", "year", "temp2")) %>% # separate temporary column
+  dplyr::select(-temp1, -temp2) %>% # remove unnecessary columns 
+                                    # (package for select has to be called
+                                    # explicitly because the raster package has a
+                                    # select function as well)
+  arrange(site, species, monthnum, year) %>%
+  as.tibble # convert to tibble format
+final_output
+```
+
+    ## # A tibble: 1,224 x 8
+    ##     site species latitude longitude month monthnum  year precipitation
+    ##    <chr>   <chr>    <dbl>     <dbl> <chr>    <chr> <chr>         <dbl>
+    ##  1    GW      ES 51.19042  11.75076   jan       01  1881            20
+    ##  2    GW      ES 51.19042  11.75076   jan       01  1882            14
+    ##  3    GW      ES 51.19042  11.75076   jan       01  1883            24
+    ##  4    GW      ES 51.19042  11.75076   feb       02  1881            35
+    ##  5    GW      ES 51.19042  11.75076   feb       02  1882            15
+    ##  6    GW      ES 51.19042  11.75076   feb       02  1883            17
+    ##  7    GW      ES 51.19042  11.75076   mar       03  1881            82
+    ##  8    GW      ES 51.19042  11.75076   mar       03  1882            37
+    ##  9    GW      ES 51.19042  11.75076   mar       03  1883            19
+    ## 10    GW      ES 51.19042  11.75076   apr       04  1881            20
+    ## # ... with 1,214 more rows
+
+If you want to learn more about the functionalities of the `tidyverse`, I recommend Hadley Wickham's great book "R for Data Science", which is available online for free on [Hadley Wickham's website](http://r4ds.had.co.nz/r-markdown.html).
+
+### Export tidy version of dataset
+
+The final output can be exported like this. `lubridate::today()` is used to automatically add a correct timestamp to the name of the exported file.
+
+``` r
+write.csv(final_output, 
+          file = paste0("output/tidy_precipitation_data_", today(), ".csv"),
+          row.names = FALSE)
+```
