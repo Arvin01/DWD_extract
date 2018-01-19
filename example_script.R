@@ -14,8 +14,9 @@
 
 ## load packages
 # create list of packages
-pkgs <-c("tidyverse", "rgdal", "raster", "gdalUtils")  
+pkgs <-c("tidyverse", "lubridate", "rgdal", "raster", "gdalUtils")  
 # tidyverse - consistent framework for data handling and management
+# lubridate - package that simplifies working with dates
 # rgdal     - driver for geodata handling
 # raster    - package for raster file handling
 # gdalUtils - used to read CRS strings from .prj files
@@ -111,18 +112,18 @@ data <- bind_cols(coord, extr)
 data
 
 ###############################################################################
-######## Batch load and extract dwd data for all months with a loop
+######## Batch load and extract DWD data for all months
 ###############################################################################
 # get names of months and path to months
 (months     <- list.files("grids/precipitation"))
 (monthpaths <- list.files("grids/precipitation", full.names = TRUE))
 
 # create empty list for extracted data
-out <- list()
+out <- vector(mode = "list", length = length(months))
 
 # loop over all months
 for (i in 1:12) {
-  # print name of month (to see when loop get stuck) 
+  # print name of month (to see if loop gets stuck) 
   cat(months[i], "\n")
   # get list of all files for the corresponding month
   files <- list.files(monthpaths[i], full.names = TRUE)
@@ -130,27 +131,40 @@ for (i in 1:12) {
   temp <- stack(files)
   # set coordinate reference
   projection(temp) <- proj
-  # extract data for the plot coordinates from the 
-  out[[i]] <- data.frame(coord, month = months[i], extract(temp, coord2))
-}
+  # extract data for the plot coordinates and store them together with
+  # the original plot level dataset, an indicator of month and the
+  # extracted precipitation data
+  out[[i]] <- data.frame(coord,                         # plot level data
+                         month = months[i],             # indicator for month
+                         raster::extract(temp, coord2), # extracted information
+                         stringsAsFactors = FALSE       # make sure month is evaluated
+                         )                              # as character to avoid warnings
+  }                                                     # in later steps
 # be careful when working with the ful dataset! for Sebastian's data,
 # it took 497.54 seconds
 
-# reshape output to longtable and bind rows
-final_output <- map(out, function(x) gather(x, key = "temp", 
-                                            value = "precipitation", 
-                                            contains("RSMS")))%>%
-  bind_rows %>% # ignore warning about attributes
-  as.tibble %>% # convert to tibble
+# reshape each table in the list "out" to to longtable, bind rows 
+# and rearrange dataset
+final_output <- map(out, 
+                    function(x) gather(x,
+                                       key = "temp",           # name for the column with the column titles
+                                       value = "precipitation",# name for the column with the content of the original columns
+                                       contains("RSMS")))%>%   # selection criterion (only combine columns that contain the character string "RSMS")
+  bind_rows %>% # bind rows of individual data.frames
   separate(temp, into = c("temp1", "monthnum", "year", "temp2")) %>% # separate temporary column
-  dplyr::select(-temp1, -temp2) # remove unnecessary columns (package for select has to be called
-                                # explicitly because the raster package has a select function as well)
-  
+  dplyr::select(-temp1, -temp2) %>% # remove unnecessary columns 
+                                    # (package for select has to be called
+                                    # explicitly because the raster package has a
+                                    # select function as well)
+  arrange(site, species, monthnum, year) %>%
+  as.tibble # convert to tibble format
 final_output
 
 ###############################################################################
 ######## Export tidy version of dataset
 ###############################################################################
+# the final output can be exported like this. lubridate::today() is used to 
+# automatically add a correct timestamp
 write.csv(final_output, 
           file = paste0("output/tidy_precipitation_data_", today(), ".csv"),
           row.names = FALSE)
