@@ -26,8 +26,8 @@ pkgs <-c("tidyverse", "lubridate", "rgdal", "raster", "gdalUtils")
 # instructions).
 
 # check for existence of packages and install if necessary
-to_install<-pkgs[!(pkgs %in% installed.packages()[,1])]
-if (length(to_install)>0)  for (i in seq(to_install)) install.packages(to_install[i])
+to_install <- pkgs[!(pkgs %in% installed.packages()[, 1])]
+if (length(to_install) > 0)  for (i in seq(to_install)) install.packages(to_install[i])
 
 # load all required packages
 for (i in pkgs) require(i, character.only = T)
@@ -151,7 +151,7 @@ final_output <- map(out,
                                        value = "precipitation",# name for the column with the content of the original columns
                                        contains("RSMS")))%>%   # selection criterion (only combine columns that contain the character string "RSMS")
   bind_rows %>% # bind rows of individual data.frames
-  separate(temp, into = c("temp1", "monthnum", "year", "temp2")) %>% # separate temporary column
+  separate(temp, into = c("temp1", "monthnum", "year", "temp2")) %>% # separate column with grid names - automatically split at the underscores
   dplyr::select(-temp1, -temp2) %>% # remove unnecessary columns 
                                     # (package for select has to be called
                                     # explicitly because the raster package has a
