@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Description
 The Deutsche Wetterdienst (DWD) offers a large amount of freely accessible climate information on its website ([Climate Data Center](https://www.dwd.de/EN/climate_environment/cdc/cdc_node.html)). 
 
-The climate information can either be accessed on the level of individual climate stations, or in the form of spatial predictions compressed as ASCII grids (*.asc.gz files) on a $1 \times 1$ m² resolution. These grids with climate information are very valuable as they enable to extract climate information for any location in Germany, and thus to obtain site-specific climate information for research sites anywhere in the country. 
+The climate information can either be accessed on the level of individual climate stations, or in the form of spatial predictions compressed as ASCII grids (*.asc.gz files) on a $1 \times 1$ km² resolution. These grids with climate information are very valuable as they enable to extract climate information for any location in Germany, and thus to obtain site-specific climate information for research sites anywhere in the country. 
 
 As this is a common task within [our department](http://plantecology.uni-goettingen.de), the present project attempts to streamline the extraction, processing and aggregation of climate information for a set of plot coordinates. With simple modifications, the same scripts can also be used to extract site-specific information from any other kind of raster dataset (e.g. [WorldClim data](http://www.worldclim.org/) etc.).
 
@@ -33,11 +33,28 @@ You can then run `example_script.R` to test if everything works on your system. 
 
 The following sections will explain step by step what is going on in `example_script.R`, and show you how to modify this script to use it for your own purposes. 
 
-ADD TREE WITH FOLDER STRUCTURE HERE!
+## Project structure
+
+```{r, tidy=FALSE, eval=FALSE, highlight=FALSE }
+/               top level scripts:
+  /01_NUMEX_litterfall_data_processing.R    -- load and process litterfall data
+  /02_NUMEX_environmental_data_processing.R -- load and process environmental data
+  /03_NUMEX_merge_datasets.R                -- unite litterfall + environmental data
+  /04_NUMEX_mod_lme4_all_sites.R            -- first analysis with R
+/backup         backups of old scripts
+/data/raw       folder with .xls(x)-files with raw data
+/data/csv       folder with .csv versions of the raw data tables
+/data/processed	folder with the processed data produced by the data processing script
+/documentation  additional information about the project         
+/figures        figures with model predictions
+/output	        model output, model objects etc.
+/R              all scripts that are source()d in the top level scripts:
+  /R/summarize_monthly.R       -- monthly summaries of irregularly recorded variables
+```
 
 ## Installation of GDAL and PROJ.4
 As this script is based on the `raster` package, which itself relies on the 
-[Geospatial Data Abstraction Library (GDAL)](http://www.gdal.org/) and (PROJ.4=[http://proj4.org/], GDAL and PROJ.4 have to be installed before being able to run the script.
+[Geospatial Data Abstraction Library (GDAL)](http://www.gdal.org/) and (PROJ.4)[http://proj4.org/], GDAL and PROJ.4 have to be installed before being able to run the script.
 
 In case you are working with Linux, GDAL and PROJ.4 can be installed by opening a shell and entering:
 
@@ -46,31 +63,31 @@ sudo apt-get update && sudo apt-get install libgdal-dev libproj-dev
 
 ```
 
-Depending on the distribution you are working with, in some cases you might need a newer version of `libgdal-dev` than the version available in the repositories. If you are using Ubuntu and encounter error messages regarding the version of GDAL, you can try to add the [ubuntugis-unstable](https://launchpad.net/~ubuntugis/+archive/ubuntu/ubuntugis-unstable) PPA to your system's repositories (keep in mind that this installs unsupported, experimental packages from an untrusted PPA and might hence be dangerous).
+Depending on the distribution you are working with, in some cases you might need a newer version of `libgdal-dev` than the version available in the repositories (in my case, this only happened with the `sp` package, but you newer know...). If you are using Ubuntu and encounter error messages regarding the version of GDAL, you can try to add the [ubuntugis-unstable](https://launchpad.net/~ubuntugis/+archive/ubuntu/ubuntugis-unstable) PPA to your system's repositories (keep in mind that this installs unsupported, experimental packages from an untrusted PPA and might hence be dangerous).
 
 ```{r, engine ='bash', eval = FALSE}
 sudo add-apt-repository ppa:ubuntugis/ubuntugis-unstable
 sudo apt-get update
 ```       
 
-If you are working with Windows, there are several possible ways to install GDAL and PROJ.4, for instance by installing [GISInternals](http://www.gisinternals.com/). Other options are offered on the corresponding websites.
+If you are working with Windows, there are several possible ways to install GDAL and PROJ.4, for instance by installing [GISInternals](http://www.gisinternals.com/). Other options are offered on the corresponding websites (e.g., see the list in the "Windows" section at the bottom of [this page](http://trac.osgeo.org/gdal/wiki/DownloadingGdalBinaries)).
 
 ## Working with example_script.R
 The next sections describe the different components of `example_script.R`, and show how to run it. Assuming you're working with [RStudio](https://www.rstudio.com/), you can simply open the .Rproj file and `example_script.R`, and then follow the instructions step by step.
 
 ### Preparation
-First, the packages needed for the analysis have to be loaded. Here's a nice bit of code that checks if all of them are installed, and installs them if they are not available:
+First, the packages needed for the analysis have to be loaded. Here's a nifty bit of code that checks if all of them are installed, and installs them only if they are not available:
 ```{r preparation1, cache = TRUE, results = 'hide'}
 # create list of packages
 pkgs <-c("tidyverse", "lubridate", "rgdal", "raster", "gdalUtils")  
 # check for existence of packages and install if necessary
-to_install<-pkgs[!(pkgs %in% installed.packages()[,1])]
-if (length(to_install)>0)  for (i in seq(to_install)) install.packages(to_install[i])
+to_install <- pkgs[!(pkgs %in% installed.packages()[, 1])]
+if (length(to_install) > 0)  for (i in seq(to_install)) install.packages(to_install[i])
 # load all required packages
 for (i in pkgs) require(i, character.only = T)
 
 ```
-The package `tidyverse` is a wrapper around a list of a large amount of very useful packages (e.g. `dplyr`, `purrr`, `ggplot2` and `readr`) that together form a consistent framework for data handling and management. `lubridate` is for working with times and dates, and in this script is only used to get a correct timestamp on the output files. `rgdal` allows R to access the functionalities of the GDAL library, `raster` is a package for efficient raster file handling and `gdalUtils` is used to read CRS strings from .prj files.
+The package `tidyverse` is a wrapper around a list of a large amount of very useful packages (e.g. `dplyr`, `purrr`, `ggplot2` and `readr`) that together form a consistent framework for data handling and management. `lubridate` is helpful when working with times and dates, and in this script is only used to get a correct timestamp on the output files. `rgdal` allows R to access the functionalities of the GDAL library, `raster` is a package for efficient raster file handling and `gdalUtils` is a package with useful GDAL-related functions (in this case only used to read CRS strings from .prj files).
 
 ### Load plot coordinates 
 The dataset with the plot coordinates is stored in `/data/csv`. It can be loaded with
@@ -83,7 +100,7 @@ Note that I load the dataset with `readr::read_csv()` instead of `utils::read.cs
 coord
 ```
 
-The function `SpatialPointsDataFrame()` can be used to convert `coord` into an object with explicit spatial information:
+The function `SpatialPointsDataFrame()` can be used to convert `coord` to an object with explicit spatial information:
 ```{r coord3, cache = TRUE, results = 'hide'}
 coord1 <- SpatialPointsDataFrame(coords = coord[,4:3], data = coord, 
                                  proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
@@ -110,7 +127,7 @@ r1 <- raster(first)
 r1 
 ```
 
-Unfortunately, the file is missing the projection information (`coord. ref. : NA`).
+Unfortunately, the loaded raster is missing the projection information (`coord. ref. : NA`).
 
 The correct coordinate reference system is stored in `grids/projection.prj`
 and can be converted to a CRS object using `gdalUtils::gdalsrsinfo()`:
@@ -120,18 +137,18 @@ proj <- gdalsrsinfo("grids/projection.prj", as.CRS = TRUE)
 proj
 ```
 
-The file can be loaded again using the correct CRS information:
+Now the raster can be loaded again using the correct CRS information:
 ```{r raster4, cache = TRUE}
 r2 <- raster(first, crs = proj)
-r2 # now the coordinate reference system is displayed
+r2 # now the correct coordinate reference system is displayed
 ```
 
-It is possible to plot the raster information, e.g. to inspect if it was loaded correctly.
+It is possible to plot rasters to the R graphics interface, e.g. to inspect if they were loaded correctly:
 ```{r raster5, cache = TRUE}
 plot(r2)
 ```
 
-The plot coordinates are in a different coordinate reference system (longitude - latitude). In order to extract information for the site coordinates, they have to be transformed to the same coordinate system, which can be achieved with `spTransform()`
+The plot coordinates are in a different coordinate reference system (longitude - latitude) than the DWD raster dataset. In order to extract information for the site coordinates, they have to be transformed to the same coordinate system, which can be achieved with `spTransform()`
 
 ```{r raster6, cache = TRUE}
 coord2 <- spTransform(coord1, CRS = proj)
@@ -140,7 +157,7 @@ coord2 <- spTransform(coord1, CRS = proj)
 In the original dataset, there are hundreds of rasters with climate information for each month. Fortunately, it is not necessary to access them all separately a single raster dataset at a time because it is easy to stack a large list of rasters all at once. Actually it is not even necessary to use a loop to achieve this...
 
 First, list all files in one folder (in this example, precipitation for 
-January):
+January of the first three years):
 ```{r raster7, cache = TRUE}
 files <- list.files("grids/precipitation/jan", full.names = TRUE)
 files
@@ -152,24 +169,26 @@ jan <- stack(files)
 jan
 ```
 
-This is only possible if coordinate system, extent and resolution of all rasters in the folder are equal. The layers in the stack take their names from the .asc objects
-in the corresponding folder. In the case of this tutorial, there are only 3 layers because of data storage constraints on GitHub, but if you are working with the original DWD dataset there may be several hundreds.
+Of course, stacking is only possible if coordinate system, extent and resolution of all rasters in the folder are equal. The layers in the stack take their names from the .asc objects
+in the corresponding folder. The naming of the monthly DWD grids follows the system *RSMS_month_year_01*, so we can use these names to get year and month information.
 
-For raster stacks, for some reason the coordinate reference has to be
-set manually after loading:
+In the case of this tutorial, there are only 3 layers because of data storage constraints on GitHub, but if you are working with the original DWD dataset there may be several hundreds.
+
+For raster stacks, for some reason I don't understand the coordinate reference has to be
+set manually *after* loading:
 ```{r raster9, cache = TRUE}
 projection(jan) <- proj
 jan # now the coord. ref. is correct
 ```
 
 
-Raster stacks can be easily plotted: 
+Raster stacks can easily be plotted, as well: 
 
 ```{r raster10, cache = TRUE}
 plot(jan) # Don't do this when they have lots of layers!
 ```
 
-The `extract()` function can be used to extract data for specific coordinates from a raster of raster stack. The package `raster` is called explicitly in this case because there's a function called `extract` in the `tidyverse` that may cause confusion.
+The `extract()` function can be used to extract data for specific coordinates from a raster or stack of rasters. The package `raster` is called explicitly in this case because there's a function called `extract` in the `tidyverse` that may cause confusion.
 ```{r raster11, cache = TRUE}
 extr <- raster::extract(jan, coord2) %>% as.tibble # the output is converted to tibble
 ```
@@ -183,7 +202,7 @@ data
 
 
 ### Batch load and extract DWD data for all months
-It is possible to extend the method described in the previous section to batch load and extract data from stacks of rasters stored in different folders. Before we do this, let's first have a look at the names of all folders in the precipitation folder:
+It is easy to extend the method described in the previous section to batch load and extract data from stacks of rasters stored in different folders. Before we do this, let's first have a look at the names of all folders in the precipitation folder:
 ```{r batch1, cache = TRUE}
 (months     <- list.files("grids/precipitation"))
 ```
@@ -199,7 +218,7 @@ out <- vector(mode = "list", length = length(months))
 ```
 
 The loop itself could look somewhat like this:
-```{r batch4, cache = TRUE}
+```{r batch4, cache = TRUE, results="hide"}
 # loop over all months
 for (i in 1:12) {
   # print name of month (to see if loop gets stuck) 
@@ -222,7 +241,9 @@ for (i in 1:12) {
 ```
 In the example on GitHub, there are only three rasters in each folder to keep the amount of data manageable. Be careful when working with the full dataset, because this step might take a lot of time. For Sebastian's dataset, it took 8 min 17.5 sec to extract monthly data for all years covered by DWD data.
 
-Now we have extracted all of the plot information, but there remains one problem: The output is a list of data.frames, and each data.frame is in a wide table format with weird column titles such as `"RSMS_09_1881_01"`. Fortunately, the data can be converted to a [tidy](https://cran.r-project.org/web/packages/tidyr/vignettes/tidy-data.html) format using a pipeline based on a string of functions from packages from the `tidyverse`. To achieve this, we first use `purrr::map()` to apply the function `gather()` from the `tidyr` package individually on each data.frame in the list with our results to reshape them to a long table format, i.e., instead of having several columns with precipitation data (each with cryptic names), we create one (temporary) column for the names and one column for the precipitation data. Then, we bind the rows of all data.frames in the list using `dplyr::bind_rows()`,  split the column with the names of the raster files into four columns with `tidyr::separate()` and use `dplyr::select()` to remove the two temporary columns with un-important gibberish. Now, we just have to reorder the output by site, species, (numeric) month and year to end up with a meaningful output.
+Now we have extracted all of the plot information, but there remains one problem: The output is a list of data.frames, and each data.frame is in a wide table format with weird column titles such as `"RSMS_09_1881_01"`. Fortunately, the data can be converted to a [tidy](https://cran.r-project.org/web/packages/tidyr/vignettes/tidy-data.html) format using a [pipeline](http://r4ds.had.co.nz/pipes.html) based on a string of functions from packages from the `tidyverse` (a pipeline is a concatenation of several operations, each of which modifying the output of the previous one - in this case achieved by using the `magrittr`-style pipeline operator `%>%`). 
+
+To achieve this, we first use `purrr::map()` to apply the function `gather()` from the `tidyr` package individually on each data.frame in the list with our results to reshape them to a long table forma This means, instead of having several columns with precipitation data (each with cryptic names), we create one (temporary) column for the names and one column for the precipitation data. In the next step, we bind the rows of all data.frames in the list together to a single data.frame with `dplyr::bind_rows()`,  split the column with the names of the raster files into four columns with `tidyr::separate()` and use `dplyr::select()` to remove the two temporary columns with unimportant gibberish. Now, we just have to reorder the output by site, species, (numeric) month and year to end up with a meaningful output.
 
 ```{r batch5, cache = TRUE}
 final_output <- map(out, 
@@ -231,7 +252,7 @@ final_output <- map(out,
                                        value = "precipitation",# name for the column with the content of the original columns
                                        contains("RSMS")))%>%   # selection criterion (only combine columns that contain the character string "RSMS")
   bind_rows %>% # bind rows of individual data.frames
-  separate(temp, into = c("temp1", "monthnum", "year", "temp2")) %>% # separate temporary column
+  separate(temp, into = c("temp1", "monthnum", "year", "temp2")) %>% # separate column with grid names - automatically split at the underscores
   dplyr::select(-temp1, -temp2) %>% # remove unnecessary columns 
                                     # (package for select has to be called
                                     # explicitly because the raster package has a
@@ -240,7 +261,7 @@ final_output <- map(out,
   as.tibble # convert to tibble format
 final_output
 ```
-If you want to learn more about the functionalities of the `tidyverse`, I recommend Hadley Wickham's great book "R for Data Science", which is available online for free on [Hadley Wickham's website](http://r4ds.had.co.nz/r-markdown.html).
+If you want to learn more about the functionalities of the `tidyverse`, I strongly recommend reading Hadley Wickham's great book "R for Data Science", which is available online for free on [Hadley Wickham's website](http://r4ds.had.co.nz).
 
 ### Export tidy version of dataset
 The final output can be exported like this. `lubridate::today()` is used to automatically add a correct timestamp to the name of the exported file.
