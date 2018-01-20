@@ -36,20 +36,23 @@ Project structure
 -----------------
 
 ``` text
-/               top level scripts:
-  /01_NUMEX_litterfall_data_processing.R    -- load and process litterfall data
-  /02_NUMEX_environmental_data_processing.R -- load and process environmental data
-  /03_NUMEX_merge_datasets.R                -- unite litterfall + environmental data
-  /04_NUMEX_mod_lme4_all_sites.R            -- first analysis with R
-/backup         backups of old scripts
-/data/raw       folder with .xls(x)-files with raw data
-/data/csv       folder with .csv versions of the raw data tables
-/data/processed folder with the processed data produced by the data processing script
-/documentation  additional information about the project         
-/figures        figures with model predictions
-/output         model output, model objects etc.
-/R              all scripts that are source()d in the top level scripts:
-  /R/summarize_monthly.R       -- monthly summaries of irregularly recorded variables
+/             -- top level files:
+/example_script.R  -- example for the workflow
+/DWD_extract.Rproj -- RStudio project file
+/README.Rmd        -- R Markdown file for the README on GitHub
+/README.md         -- compiled R Markdown file
+
+/data/raw     -- folder with .xls(x)-files with raw data
+/data/csv     -- folder with .csv versions of the raw data tables
+/grids        -- folder with the grids with the DWD data
+  /precipitation  -- DWD precipitation data
+     /jan           -- folders for the .asc grids with monthly 
+     /feb              averages of precipitation data
+     /...
+/figures      -- figures (so far only screenshot for README file)
+/output       -- .csv file with the extracted precipitation data
+/README_cache -- cached data for README.Rmd file
+/README_files -- generated objects in README.Rmd file
 ```
 
 Installation of GDAL and PROJ.4
