@@ -331,7 +331,7 @@ As you can see, the subfolders are just the names of the months. We might be bet
     ##  [9] "grids/precipitation/may" "grids/precipitation/nov"
     ## [11] "grids/precipitation/oct" "grids/precipitation/sep"
 
-We can now loop over all these folders and load and stack all containing rasters easily with a loop. For loops have a bad reputation in R, but they do not necessarily have to be slow. The key to efficient loops in R is pre-allocation. In this example, we make sure our loop runs fast by creating an empty list for the extracted data instead of jamming our memory with an object that grows during each iteration:
+We can now loop over all these folders and load and stack all containing rasters easily with a `for` loop. `for` loops have a bad reputation in R, but they do not necessarily have to be slow. The key to efficient loops in R is pre-allocation. In this example, we make sure our loop runs fast by creating an empty list for the extracted data instead of jamming our memory with an object that grows during each iteration:
 
 ``` r
 out <- vector(mode = "list", length = length(months))
@@ -361,11 +361,11 @@ for (i in 1:12) {
   }                                               # in later steps
 ```
 
-In the example on GitHub, there are only three rasters in each folder to keep the amount of data manageable. Be careful when working with the full dataset, because this step might take a lot of time. For Sebastian's dataset, it took 8 min 17.5 sec to extract monthly data for all years covered by DWD data.
+In the example on GitHub, there are only three rasters in each folder to keep the amount of uploaded data manageable. Be careful when working with the full dataset, because this step might take a lot of time. For Sebastian's dataset, it took 8 min 17.5 sec to extract monthly data for all years covered by DWD data.
 
-Now we have extracted all of the plot information, but there remains one problem: The output is a list of data.frames, and each data.frame is in a wide table format with weird column titles such as `"RSMS_09_1881_01"`. Fortunately, the data can be converted to a [tidy](https://cran.r-project.org/web/packages/tidyr/vignettes/tidy-data.html) format using a [pipeline](http://r4ds.had.co.nz/pipes.html) based on a string of functions from packages from the `tidyverse` (a pipeline is a concatenation of several operations, each of which modifying the output of the previous one - in this case achieved by using the `magrittr`-style pipeline operator `%>%`).
+Now we have extracted all of the plot information, but there remains one problem: The output is a list of data.frames, and all of them are in wide table format with weird column titles such as `"RSMS_09_1881_01"`. Fortunately, the data can be converted to a [tidy](https://cran.r-project.org/web/packages/tidyr/vignettes/tidy-data.html) format using a [pipeline](http://r4ds.had.co.nz/pipes.html) based on a string of functions from packages from the `tidyverse` (a pipeline is a concatenation of several operations, each of which modifying the output of the previous one - in this case achieved by using the `magrittr`-style pipeline operator `%>%`).
 
-To achieve this, we first use `purrr::map()` to apply the function `gather()` from the `tidyr` package individually on each data.frame in the list with our results to reshape them to a long table forma This means, instead of having several columns with precipitation data (each with cryptic names), we create one (temporary) column for the names and one column for the precipitation data. In the next step, we bind the rows of all data.frames in the list together to a single data.frame with `dplyr::bind_rows()`, split the column with the names of the raster files into four columns with `tidyr::separate()` and use `dplyr::select()` to remove the two temporary columns with unimportant gibberish. Now, we just have to reorder the output by site, species, (numeric) month and year to end up with a meaningful output.
+To achieve this, we first use `purrr::map()` to apply the function `gather()` from the `tidyr` package individually on each data.frame in the list with our results to convert them to long table format. This means, instead of having several columns with precipitation data (each with cryptic names), we create one (temporary) column for the former column names, and another column for the precipitation data. In the next step, we bind the rows of all data.frames in the resulting list together to a single data.frame with `dplyr::bind_rows()`. We then can split the column `temp` that stores names of the raster files into four separate columns with `tidyr::separate()`, and then use `dplyr::select()` to remove the two temporary columns with unimportant gibberish. Now, we just have to reorder the output by site, species, (numeric) month and year to end up with a meaningful output.
 
 ``` r
 final_output <- map(out, 
@@ -403,10 +403,12 @@ If you want to learn more about the functionalities of the `tidyverse`, I strong
 
 ### Export tidy version of dataset
 
-The final output can be exported like this. `lubridate::today()` is used to automatically add a correct timestamp to the name of the exported file.
+The final output can be exported like this:
 
 ``` r
 write.csv(final_output, 
           file = paste0("output/tidy_precipitation_data_", today(), ".csv"),
           row.names = FALSE)
 ```
+
+To make the output is correctly tagged, `lubridate::today()` is used to automatically add a timestamp to the name of the exported file.
