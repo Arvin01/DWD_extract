@@ -6,9 +6,14 @@ Description
 
 The Deutsche Wetterdienst (DWD) offers a large amount of freely accessible climate information on its website ([Climate Data Center](https://www.dwd.de/EN/climate_environment/cdc/cdc_node.html)).
 
-The climate information can either be accessed on the level of individual climate stations, or in the form of spatial predictions compressed as ASCII grids (\*.asc.gz files) on a 1 × 1 km² resolution. These grids with climate information are very valuable as they enable to extract climate information for any location in Germany, and thus to obtain site-specific climate information for research sites anywhere in the country.
+The climate information can either be accessed on the level of individual climate stations, or in the form of spatial predictions stored as compressed ASCII grids (\*.asc.gz files) on a 1 × 1 km² resolution. These grids with climate information are very valuable as they enable to extract climate information for any location in Germany, and thus to obtain site-specific climate information for research sites anywhere in the country.
 
 As this is a common task within [our department](http://plantecology.uni-goettingen.de), the present project attempts to streamline the extraction, processing and aggregation of climate information for a set of plot coordinates. With simple modifications, the same scripts can also be used to extract site-specific information from any other kind of raster dataset (e.g. [WorldClim data](http://www.worldclim.org/) etc.).
+
+TL/DR
+-----
+
+**Note to advanced users:** This tutorial explains how to loop over various folders with multiple raster datasets, load them with `raster::stack()`, and export plot-level information with `raster::extract()`, so if this sounds familiar to you don't waste your time.
 
 Getting the DWD raw data
 ------------------------
