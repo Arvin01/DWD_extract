@@ -63,7 +63,7 @@ Project structure
 Installation of GDAL and PROJ.4
 -------------------------------
 
-As this script is based on the `raster` package, which itself relies on the [Geospatial Data Abstraction Library (GDAL)](http://www.gdal.org/) and (PROJ.4)\[<http://proj4.org/>\], GDAL and PROJ.4 have to be installed before being able to run the script.
+As this script is based on the `raster` package, which itself relies on the [Geospatial Data Abstraction Library (GDAL)](http://www.gdal.org/) and [PROJ.4](http://proj4.org/), GDAL and PROJ.4 have to be installed before being able to run the script.
 
 In case you are working with Linux, GDAL and PROJ.4 can be installed by opening a shell and entering:
 
